@@ -1,53 +1,62 @@
 const express = require('express');
 const { ApolloServer } = require('apollo-server-express');
-require('dotenv').config();
 const jwt = require('jsonwebtoken');
-// Импортируем локальные модули
+const helmet = require('helmet');
+const cors = require('cors');
+const depthLimit = require('graphql-depth-limit');
+const { createComplexityLimitRule } = require('graphql-validation-complexity');
+require('dotenv').config();
+
 const db = require('./db');
 const models = require('./models');
 const typeDefs = require('./schema');
 const resolvers = require('./resolvers');
-const helmet = require('helmet')
-const cors = require('cors');
-const depthLimit = require('graphql-depth-limit');
-const { createComplexityLimitRule } = require('graphql-validation-complexity');
 
-// Запускаем сервер на порте, указанном в файле .env, или на порте 4000
+// Run our server on a port specified in our .env file or port 4000
 const port = process.env.PORT || 4000;
 const DB_HOST = process.env.DB_HOST;
-const app = express();
-db.connect(DB_HOST);
-app.use(helmet())
-app.use(cors())
 
-// Получаем информацию пользователя из JWT
+const app = express();
+
+db.connect(DB_HOST);
+
+// Security middleware
+app.use(helmet());
+// CORS middleware
+app.use(cors());
+
+// get the user info from a JWT
 const getUser = token => {
   if (token) {
     try {
-      // Возвращаем информацию пользователя из токена
+      // return the user information from the token
       return jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
-      // Если с токеном возникла проблема, выбрасываем ошибку
-      new Error('Session invalid');
+      // if there's a problem with the token, throw an error
+      throw new Error('Session invalid');
     }
   }
 };
 
-// Настраиваем Apollo Server
+// Apollo Server setup
+// updated to include `validationRules`
 const server = new ApolloServer({
   typeDefs,
   resolvers,
   validationRules: [depthLimit(5), createComplexityLimitRule(1000)],
-  context: ({ req }) => {
+  context: async ({ req }) => {
+    // get the user token from the headers
     const token = req.headers.authorization;
+    // try to retrieve a user with the token
     const user = getUser(token);
-    console.log('user info', user);
-    // Добавляем модели БД в context
+    // add the db models and the user to the context
     return { models, user };
   }
 });
-// Применяем промежуточное ПО Apollo GraphQL и указываем путь к /api
+
+// Apply the Apollo GraphQL middleware and set the path to /api
 server.applyMiddleware({ app, path: '/api' });
+
 app.listen({ port }, () =>
   console.log(
     `GraphQL Server running at http://localhost:${port}${server.graphqlPath}`

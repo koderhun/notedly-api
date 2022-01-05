@@ -1,22 +1,23 @@
-// Запросим библиотеку mongoose
+// Require the mongose library
 const mongoose = require('mongoose');
-// Определяем схему БД заметки
+
+// Define the note's database schema
 const noteSchema = new mongoose.Schema(
   {
     content: {
       type: String,
       required: true
     },
+    // reference the author's object ID
     author: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: true
     },
-    // Добавляем свойство favoriteCount
     favoriteCount: {
       type: Number,
       default: 0
     },
-    // Добавляем свойство favoritedBy
     favoritedBy: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -25,11 +26,12 @@ const noteSchema = new mongoose.Schema(
     ]
   },
   {
-    // Присваиваем поля createdAt и updatedAt с типом данных
+    // Assigns createdAt and updatedAt fields with a Date type
     timestamps: true
   }
 );
-// Определяем модель 'Note' со схемой
+
+// Define the 'Note' model with the schema
 const Note = mongoose.model('Note', noteSchema);
-// Экспортируем модуль
+// Export the module
 module.exports = Note;

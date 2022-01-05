@@ -1,60 +1,62 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
 const {
   AuthenticationError,
   ForbiddenError
 } = require('apollo-server-express');
+const mongoose = require('mongoose');
 require('dotenv').config();
+
 const gravatar = require('../util/gravatar');
 
 module.exports = {
-  // Добавляем контекст пользователя
   newNote: async (parent, args, { models, user }) => {
-    // Если в контексте нет пользователя, выбрасываем AuthenticationError
     if (!user) {
       throw new AuthenticationError('You must be signed in to create a note');
     }
+
     return await models.Note.create({
       content: args.content,
-      // Ссылаемся на mongo id автора
-      author: mongoose.Types.ObjectId(user.id)
+      author: mongoose.Types.ObjectId(user.id),
+      favoriteCount: 0
     });
   },
   deleteNote: async (parent, { id }, { models, user }) => {
-    // Если не пользователь, выбрасываем ошибку авторизации
+    // if not a user, throw an Authentication Error
     if (!user) {
       throw new AuthenticationError('You must be signed in to delete a note');
     }
-    // Находим заметку
+
+    // find the note
     const note = await models.Note.findById(id);
-    // Если владелец заметки и текущий пользователь не совпадают, выбрасываем
-    // запрет на действие
+    // if the note owner and current user don't match, throw a forbidden error
     if (note && String(note.author) !== user.id) {
       throw new ForbiddenError("You don't have permissions to delete the note");
     }
+
     try {
-      // Если все проверки проходят, удаляем заметку
+      // if everything checks out, remove the note
       await note.remove();
       return true;
     } catch (err) {
-      // Если в процессе возникает ошибка, возвращаем false
+      // if there's an error along the way, return false
       return false;
     }
   },
   updateNote: async (parent, { content, id }, { models, user }) => {
-    // Если не пользователь, выбрасываем ошибку авторизации
+    // if not a user, throw an Authentication Error
     if (!user) {
       throw new AuthenticationError('You must be signed in to update a note');
     }
-    // Находим заметку
+
+    // find the note
     const note = await models.Note.findById(id);
-    // Если владелец заметки и текущий пользователь не совпадают, выбрасываем
-    // запрет на действие
+    // if the note owner and current user don't match, throw a forbidden error
     if (note && String(note.author) !== user.id) {
       throw new ForbiddenError("You don't have permissions to update the note");
     }
-    // Обновляем заметку в БД и возвращаем ее в обновленном виде
+
+    // Update the note in the db and return the updated note
     return await models.Note.findOneAndUpdate(
       {
         _id: id
@@ -69,60 +71,18 @@ module.exports = {
       }
     );
   },
-  signUp: async (parent, { username, email, password }, { models }) => {
-    // Нормализуем имейл
-    email = email.trim().toLowerCase();
-    // Хешируем пароль
-    const hashed = await bcrypt.hash(password, 10);
-    // Создаем url gravatar-изображения
-    const avatar = gravatar(email);
-
-    try {
-      const user = await models.User.create({
-        username,
-        email,
-        avatar,
-        password: hashed
-      });
-
-      return jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-    } catch (err) {
-      console.log('Errrr', err);
-
-      throw new Error('Error Create User');
-    }
-  },
-  signIn: async (parent, { username, email, password }, { models }) => {
-    if (email) {
-      // Нормализуем e-mail
-      email = email.trim().toLowerCase();
-    }
-    const user = await models.User.findOne({
-      $or: [{ email }, { username }]
-    });
-    // Если пользователь не найден, выбрасываем ошибку аутентификации
-    if (!user) {
-      throw new AuthenticationError('Error signing in');
-    }
-    // Если пароли не совпадают, выбрасываем ошибку аутентификации
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      throw new AuthenticationError('Error signing in');
-    }
-
-    // Создаем и возвращаем json web token
-    return jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-  },
   toggleFavorite: async (parent, { id }, { models, user }) => {
-    // Если контекст пользователя не передан, выбрасываем ошибку
+    // if no user context is passed, throw auth error
     if (!user) {
       throw new AuthenticationError();
     }
-    // Проверяем, отмечал ли пользователь заметку как избранную
+
+    // check to see if the user has already favorited the note
     let noteCheck = await models.Note.findById(id);
     const hasUser = noteCheck.favoritedBy.indexOf(user.id);
-    // Если пользователь есть в списке, удаляем его оттуда и уменьшаем значение
-    // favoriteCount на 1
+
+    // if the user exists in the list
+    // pull them from the list and reduce the favoriteCount by 1
     if (hasUser >= 0) {
       return await models.Note.findByIdAndUpdate(
         id,
@@ -135,13 +95,13 @@ module.exports = {
           }
         },
         {
-          // Устанавливаем new как true, чтобы вернуть обновленный документ
+          // Set new to true to return the updated doc
           new: true
         }
       );
     } else {
-      // Если пользователя в списке нет, добавляем его туда и увеличиваем
-      // значение favoriteCount на 1
+      // if the user doesn't exists in the list
+      // add them to the list and increment the favoriteCount by 1
       return await models.Note.findByIdAndUpdate(
         id,
         {
@@ -157,5 +117,52 @@ module.exports = {
         }
       );
     }
+  },
+  signUp: async (parent, { username, email, password }, { models }) => {
+    // normalize email address
+    email = email.trim().toLowerCase();
+    // hash the password
+    const hashed = await bcrypt.hash(password, 10);
+    // create the gravatar url
+    const avatar = gravatar(email);
+    try {
+      const user = await models.User.create({
+        username,
+        email,
+        avatar,
+        password: hashed
+      });
+
+      // create and return the json web token
+      return jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+    } catch (err) {
+      // if there's a problem creating the account, throw an error
+      throw new Error('Error creating account');
+    }
+  },
+
+  signIn: async (parent, { username, email, password }, { models }) => {
+    if (email) {
+      // normalize email address
+      email = email.trim().toLowerCase();
+    }
+
+    const user = await models.User.findOne({
+      $or: [{ email }, { username }]
+    });
+
+    // if no user is found, throw an authentication error
+    if (!user) {
+      throw new AuthenticationError('Error signing in');
+    }
+
+    // if the passwords don't match, throw an authentication error
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      throw new AuthenticationError('Error signing in');
+    }
+
+    // create and return the json web token
+    return jwt.sign({ id: user._id }, process.env.JWT_SECRET);
   }
 };

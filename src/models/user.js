@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+
 const UserSchema = new mongoose.Schema(
   {
     username: {
@@ -20,9 +21,10 @@ const UserSchema = new mongoose.Schema(
     }
   },
   {
-    // Присваиваем поля createdAt и updatedAt с типом Date
+    // Assigns createdAt and updatedAt fields with a Date type
     timestamps: true
   }
 );
+
 const User = mongoose.model('User', UserSchema);
 module.exports = User;
